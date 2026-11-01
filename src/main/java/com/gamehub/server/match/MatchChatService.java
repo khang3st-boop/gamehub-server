@@ -98,13 +98,21 @@ public class MatchChatService {
     @Transactional
     public ReportDto report(UUID me, UUID matchId, MatchReportRequest req) {
         Match m = participant(me, matchId);
-        UUID opponent = m.opponentOf(me);
+        // Phòng 4 người: chọn người bị báo cáo qua userId hoặc qua tin nhắn của họ.
+        UUID opponent = req.userId() != null ? req.userId()
+                : m.getCapacity() == 2 ? m.opponentOf(me) : null;
         if (req.messageId() != null) {
             MatchMessage msg = messages.findById(req.messageId())
                     .orElseThrow(() -> ApiException.notFound("Không tìm thấy tin nhắn"));
+            if (opponent == null) {
+                opponent = msg.getSenderId();
+            }
             if (!msg.getMatchId().equals(matchId) || !msg.getSenderId().equals(opponent)) {
                 throw ApiException.badRequest("INVALID_TARGET", "Chỉ báo cáo được tin nhắn của đối thủ trong phòng này");
             }
+        }
+        if (opponent == null || opponent.equals(me) || !m.isPlayer(opponent)) {
+            throw ApiException.badRequest("INVALID_TARGET", "Chỉ báo cáo được người chơi khác trong phòng này");
         }
         String reason = Text.clean(req.reason());
         if (reason == null) {

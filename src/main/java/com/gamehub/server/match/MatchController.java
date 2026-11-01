@@ -37,7 +37,7 @@ import com.gamehub.server.match.MatchDtos.ProgressRequest;
  */
 @RestController
 @RequestMapping("/api/v1/matches")
-@Tag(name = "Trận đấu online", description = "Phòng đấu 2 người: sẵn sàng, đếm ngược, tiến độ, nộp kết quả, Caro theo lượt, chat trong phòng")
+@Tag(name = "Trận đấu online", description = "Phòng đấu 2/4 người (1v1, phòng có mã, giải Caro 4 người): sẵn sàng, đếm ngược, tiến độ, nộp kết quả, Caro theo lượt, chat trong phòng")
 @SecurityRequirement(name = "bearer")
 public class MatchController {
 

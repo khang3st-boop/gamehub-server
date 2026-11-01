@@ -24,20 +24,27 @@ public final class MatchDtos {
 
     public record PlayerDto(
             UserSummaryDto user,
-            @Schema(description = "A hoặc B") String slot,
+            @Schema(description = "Ghế A–D (A là chủ phòng)") String slot,
             boolean ready,
             @Schema(description = "Tiến độ 0–100 do client báo (chỉ để hiển thị, không quyết định thắng thua)")
             int progress,
             @Schema(description = "Đã dùng gợi ý / tự giải: trận không tính xếp hạng") boolean assisted,
             @Schema(description = "Thời gian hoàn thành do SERVER đo (ms), null nếu chưa xong") Long timeMs,
-            @Schema(description = "Đang có kết nối realtime") boolean connected) {
+            @Schema(description = "Đang có kết nối realtime") boolean connected,
+            @Schema(description = "Hạng do server xếp (1 = nhất), null nếu chưa có") Integer rank,
+            @Schema(description = "Đã rời / rớt mạng / bị loại khỏi trận") boolean out) {
+    }
+
+    @Schema(description = "Một ván trong giải Caro 4 người")
+    public record BracketMatchDto(UUID id, @Schema(description = "SEMI1 | SEMI2 | FINAL") String stage,
+            Match.Status status, List<UUID> players, UUID winnerId, Match.EndReason endReason) {
     }
 
     public record MatchDto(
             UUID id,
             String game,
             String mode,
-            @Schema(description = "INVITE (mời bạn) | MATCHMAKING (ghép trận)") String source,
+            @Schema(description = "INVITE (mời bạn) | MATCHMAKING (ghép trận) | ROOM (phòng có mã) | BRACKET (ván trong giải Caro 4 người)") String source,
             Match.Status status,
             @Schema(description = "Đề do server sinh — giống hệt cho hai người") Map<String, Object> config,
             List<PlayerDto> players,
@@ -50,7 +57,23 @@ public final class MatchDtos {
             @Schema(description = "Trận có tính điểm xếp hạng online không") boolean rated,
             @Schema(description = "Caro: các ô đã đánh theo thứ tự (X đi trước)") List<Integer> caroMoves,
             @Schema(description = "Caro: hạn của lượt hiện tại") Instant turnDeadline,
-            @Schema(description = "Giờ server lúc tạo bản chụp (để client bù lệch đồng hồ)") Instant serverTime) {
+            @Schema(description = "Giờ server lúc tạo bản chụp (để client bù lệch đồng hồ)") Instant serverTime,
+            @Schema(description = "Số ghế: 2 hoặc 4") int capacity,
+            @Schema(description = "Mã phòng để bạn bè vào (chỉ phòng tạo tay)") String roomCode,
+            @Schema(description = "Ván con của giải Caro 4 người: id phòng mẹ") UUID parentId,
+            @Schema(description = "SEMI1 | SEMI2 | FINAL") String stage,
+            @Schema(description = "Giải Caro 4 người: các ván bán kết / chung kết") List<BracketMatchDto> bracket,
+            @Schema(description = "Khoá trợ giúp (gợi ý, tự giải, AI) trong trận thách đấu") boolean assistLocked) {
+    }
+
+    public record CreateRoomRequest(
+            @NotBlank String game,
+            @NotBlank String mode,
+            @Schema(description = "2 hoặc 4 người") @Min(2) @Max(4) int capacity) {
+    }
+
+    public record JoinRoomRequest(
+            @NotBlank @Pattern(regexp = "^[A-Za-z0-9]{6}$", message = "Mã phòng gồm 6 ký tự") String code) {
     }
 
     public record ProgressRequest(@Min(0) @Max(100) int progress) {
@@ -95,6 +118,7 @@ public final class MatchDtos {
 
     public record MatchReportRequest(
             Long messageId,
+            @Schema(description = "Người bị báo cáo (bắt buộc trong phòng 4 người nếu không kèm tin nhắn)") UUID userId,
             @NotBlank(message = "Cần nêu lý do") @Size(max = 500) String reason) {
     }
 

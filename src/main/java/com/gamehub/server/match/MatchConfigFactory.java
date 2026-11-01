@@ -24,6 +24,7 @@ import com.gamehub.server.game.rubik.CubieCube.Move;
  * <li>Xếp hình: tranh có sẵn + lưới + seed (client cắt và xáo mảnh xác định theo seed);</li>
  * <li>Caro: bàn 15×15 trống, server bốc thăm ai cầm X (đi trước).</li>
  * </ul>
+ * Mọi đề mới đều có {@code assistLocked = true}: không được dùng trợ giúp trong trận thách đấu.
  * Xếp hình online chỉ dùng tranh có sẵn: ảnh cá nhân không bao giờ được gửi lên server.
  */
 @Component
@@ -57,6 +58,8 @@ public class MatchConfigFactory {
     public Map<String, Object> create(String game, String mode, UUID a, UUID b) {
         validate(game, mode);
         Map<String, Object> c = new LinkedHashMap<>();
+        // Thách đấu xếp hạng: khoá gợi ý / tự giải / AI. Server từ chối và xử thua nếu vẫn dùng.
+        c.put("assistLocked", true);
         switch (game) {
             case "rubik" -> {
                 List<Move> moves = CubieCube.scramble(random, SCRAMBLE_LENGTH);

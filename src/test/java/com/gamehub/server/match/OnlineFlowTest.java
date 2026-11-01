@@ -5,6 +5,7 @@ import static org.hamcrest.Matchers.hasSize;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -260,20 +261,33 @@ class OnlineFlowTest {
     }
 
     @Test
-    void assistedWinIsNotRated() throws Exception {
+    void assistInRatedChallengeDisqualifiesOnServer() throws Exception {
         Account a = register("asa");
         Account b = register("asb");
         befriend(a, b);
         UUID id = inviteAndAccept(a, b, "rubik", "3x3");
-        String scramble = match(id, a).get("config").get("scramble").asString();
+        JsonNode cfg = match(id, a).get("config");
+        assertThat(cfg.get("assistLocked").asBoolean()).isTrue();
+        String scramble = cfg.get("scramble").asString();
         readyAndStart(id, a, b);
+        // Trận thách đấu khoá trợ giúp: client cố gọi trợ giúp → server xử thua, không chỉ ẩn nút.
         mvc.perform(as(post("/api/v1/matches/" + id + "/assist"), a))
-                .andExpect(jsonPath("$.players[0].assisted").value(true));
+                .andExpect(jsonPath("$.status").value("FINISHED"))
+                .andExpect(jsonPath("$.endReason").value("DISQUALIFIED"))
+                .andExpect(jsonPath("$.winnerId").value(b.id().toString()))
+                .andExpect(jsonPath("$.assistLocked").value(true));
         clock.advance(Duration.ofSeconds(5));
         mvc.perform(postJson("/api/v1/matches/" + id + "/finish", a, Map.of("solution", inverse(scramble))))
-                .andExpect(jsonPath("$.winnerId").value(a.id().toString()))
-                .andExpect(jsonPath("$.rated").value(false));
-        assertThat(ratings.find(a.id(), "rubik")).isEmpty();
+                .andExpect(status().isConflict());
+        // Nộp kết quả có cờ "đã dùng trợ giúp" cũng bị xử thua.
+        UUID id2 = inviteAndAccept(a, b, "rubik", "3x3");
+        String scramble2 = match(id2, a).get("config").get("scramble").asString();
+        readyAndStart(id2, a, b);
+        clock.advance(Duration.ofSeconds(5));
+        mvc.perform(postJson("/api/v1/matches/" + id2 + "/finish", a,
+                Map.of("solution", inverse(scramble2), "assisted", true)))
+                .andExpect(jsonPath("$.endReason").value("DISQUALIFIED"))
+                .andExpect(jsonPath("$.winnerId").value(b.id().toString()));
     }
 
     // ------------------------------------------------------------------ Sudoku + Xếp hình
@@ -453,5 +467,242 @@ class OnlineFlowTest {
         mvc.perform(as(get(q), sg)).andExpect(status().isOk());
         mvc.perform(as(delete(q), sg)).andExpect(status().isNoContent());
         mvc.perform(as(get(q), sg)).andExpect(status().isNoContent());
+    }
+
+    // ------------------------------------------------------------------ phòng chờ 2/4 người
+
+    JsonNode createRoom(Account host, String game, String mode, int capacity) throws Exception {
+        return body(mvc.perform(postJson("/api/v1/rooms", host,
+                Map.of("game", game, "mode", mode, "capacity", capacity))).andExpect(status().isCreated()).andReturn());
+    }
+
+    JsonNode joinCode(Account a, String code) throws Exception {
+        return body(mvc.perform(postJson("/api/v1/rooms/join", a, Map.of("code", code)))
+                .andExpect(status().isOk()).andReturn());
+    }
+
+    void readyAll(UUID id, Account... ps) throws Exception {
+        for (Account p : ps) {
+            mvc.perform(as(post("/api/v1/matches/" + id + "/ready"), p)).andExpect(status().isOk());
+        }
+    }
+
+    @Test
+    void fourPlayerRubikRoomRaceRanksByServerTime() throws Exception {
+        Account a = register("r4a");
+        Account b = register("r4b");
+        Account c = register("r4c");
+        Account d = register("r4d");
+        Account e = register("r4e");
+        JsonNode room = createRoom(a, "rubik", "3x3", 4);
+        assertThat(room.get("capacity").asInt()).isEqualTo(4);
+        assertThat(room.get("source").asString()).isEqualTo("ROOM");
+        assertThat(room.get("players").size()).isEqualTo(1);
+        String code = room.get("roomCode").asString();
+        assertThat(code).hasSize(6);
+        UUID id = UUID.fromString(room.get("id").asString());
+        // Chủ phòng không thể tạo phòng thứ hai khi đang ngồi phòng này.
+        mvc.perform(postJson("/api/v1/rooms", a, Map.of("game", "rubik", "mode", "3x3", "capacity", 2)))
+                .andExpect(status().isConflict());
+        mvc.perform(postJson("/api/v1/rooms/join", b, Map.of("code", "ZZZZZZ"))).andExpect(status().isNotFound());
+        joinCode(b, code);
+        assertThat(joinCode(b, code).get("players").size()).isEqualTo(2); // vào lại: không nhân đôi ghế
+        joinCode(c, code);
+        JsonNode full = joinCode(d, code);
+        assertThat(full.get("players").size()).isEqualTo(4);
+        assertThat(full.get("players").get(3).get("slot").asString()).isEqualTo("D");
+        mvc.perform(postJson("/api/v1/rooms/join", e, Map.of("code", code)))
+                .andExpect(status().isConflict()).andExpect(jsonPath("$.code").value("ROOM_FULL"));
+
+        // Đề chỉ sinh khi đủ người và tất cả Sẵn sàng.
+        readyAll(id, a, b, c);
+        JsonNode waiting = match(id, a);
+        assertThat(waiting.get("status").asString()).isEqualTo("WAITING_READY");
+        readyAll(id, d);
+        JsonNode cd = match(id, c);
+        assertThat(cd.get("status").asString()).isEqualTo("COUNTDOWN");
+        String scramble = cd.get("config").get("scramble").asString();
+        assertThat(match(id, d).get("config").get("scramble").asString()).isEqualTo(scramble);
+        clock.advance(Duration.ofSeconds(4));
+        matches.tick();
+
+        clock.advance(Duration.ofSeconds(10));
+        finishRubik(id, c, scramble).andExpect(jsonPath("$.status").value("PLAYING"));
+        clock.advance(Duration.ofSeconds(2));
+        finishRubik(id, a, scramble);
+        clock.advance(Duration.ofSeconds(2));
+        // B bỏ cuộc giữa chừng → bị loại, những người còn lại vẫn đua tiếp.
+        mvc.perform(as(post("/api/v1/matches/" + id + "/forfeit"), b))
+                .andExpect(jsonPath("$.status").value("PLAYING"));
+        clock.advance(Duration.ofSeconds(3));
+        JsonNode end = body(finishRubik(id, d, scramble)
+                .andExpect(jsonPath("$.status").value("FINISHED"))
+                .andExpect(jsonPath("$.winnerId").value(c.id().toString()))
+                .andExpect(jsonPath("$.rated").value(true)).andReturn());
+        Map<String, Integer> rank = new java.util.HashMap<>();
+        end.get("players").forEach(p -> rank.put(p.get("user").get("id").asString(), p.get("rank").asInt()));
+        assertThat(rank.get(c.id().toString())).isEqualTo(1);
+        assertThat(rank.get(a.id().toString())).isEqualTo(2);
+        assertThat(rank.get(d.id().toString())).isEqualTo(3);
+        assertThat(rank.get(b.id().toString())).isEqualTo(4);
+        assertThat(ratings.find(c.id(), "rubik").orElseThrow().getRating()).isGreaterThan(1200);
+        assertThat(ratings.find(b.id(), "rubik").orElseThrow().getRating()).isLessThan(1200);
+        mvc.perform(as(get("/api/v1/matches/active"), a)).andExpect(status().isNoContent());
+    }
+
+    org.springframework.test.web.servlet.ResultActions finishRubik(UUID id, Account p, String scramble) throws Exception {
+        return mvc.perform(postJson("/api/v1/matches/" + id + "/finish", p, Map.of("solution", inverse(scramble))))
+                .andExpect(status().isOk());
+    }
+
+    @Test
+    void guestLeavingWaitingRoomFreesSeatAndHostCanInviteIntoRoom() throws Exception {
+        Account host = register("rgh");
+        Account g = register("rgg");
+        Account f = register("rgf");
+        befriend(host, f);
+        JsonNode room = createRoom(host, "sudoku", "easy", 2);
+        UUID id = UUID.fromString(room.get("id").asString());
+        joinCode(g, room.get("roomCode").asString());
+        mvc.perform(as(post("/api/v1/matches/" + id + "/ready"), g)).andExpect(status().isOk());
+        // Khách rời phòng chờ: chỉ nhả ghế, phòng vẫn mở cho chủ phòng.
+        mvc.perform(as(post("/api/v1/matches/" + id + "/forfeit"), g)).andExpect(status().isOk());
+        JsonNode after = match(id, host);
+        assertThat(after.get("status").asString()).isEqualTo("WAITING_READY");
+        assertThat(after.get("players").size()).isEqualTo(1);
+        mvc.perform(as(get("/api/v1/matches/active"), g)).andExpect(status().isNoContent());
+
+        // Mời bạn vào đúng phòng chờ; nhận lời → vào ghế trống, không tạo phòng mới.
+        JsonNode inv = body(mvc.perform(postJson("/api/v1/challenges/invites", host,
+                Map.of("userId", f.id(), "game", "rubik", "mode", "3x3", "roomId", id)))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.roomId").value(id.toString()))
+                .andExpect(jsonPath("$.game").value("sudoku"))
+                .andExpect(jsonPath("$.capacity").value(2)).andReturn());
+        mvc.perform(as(post("/api/v1/challenges/invites/" + inv.get("id").asString() + "/accept"), f))
+                .andExpect(jsonPath("$.matchId").value(id.toString()));
+        // Bấm nhận lần hai không tạo phòng thứ hai.
+        mvc.perform(as(post("/api/v1/challenges/invites/" + inv.get("id").asString() + "/accept"), f))
+                .andExpect(status().is4xxClientError());
+        assertThat(match(id, f).get("players").size()).isEqualTo(2);
+        // Phòng đủ người thì không mời thêm được.
+        mvc.perform(postJson("/api/v1/challenges/invites", host,
+                Map.of("userId", g.id(), "game", "sudoku", "mode", "easy", "roomId", id)))
+                .andExpect(status().isConflict()).andExpect(jsonPath("$.code").value("ROOM_FULL"));
+        // Chủ phòng rời → đóng phòng.
+        mvc.perform(as(post("/api/v1/matches/" + id + "/forfeit"), host)).andExpect(status().isOk());
+        assertThat(match(id, f).get("status").asString()).isEqualTo("CANCELLED");
+        mvc.perform(postJson("/api/v1/rooms/join", g, Map.of("code", room.get("roomCode").asString())))
+                .andExpect(status().is4xxClientError());
+    }
+
+    @Test
+    void fourPlayerCaroIsSemifinalsThenFinal() throws Exception {
+        Account[] ps = { register("cba"), register("cbb"), register("cbc"), register("cbd") };
+        JsonNode room = createRoom(ps[0], "caro", "15x15", 4);
+        UUID parent = UUID.fromString(room.get("id").asString());
+        for (int i = 1; i < 4; i++) {
+            joinCode(ps[i], room.get("roomCode").asString());
+        }
+        readyAll(parent, ps);
+        JsonNode p = match(parent, ps[0]);
+        assertThat(p.get("bracket").size()).isEqualTo(2);
+        // Mỗi người được đưa vào đúng ván bán kết của mình.
+        UUID semi = UUID.fromString(body(mvc.perform(as(get("/api/v1/matches/active"), ps[1]))
+                .andExpect(status().isOk()).andReturn()).get("id").asString());
+        assertThat(semi).isNotEqualTo(parent);
+        assertThat(match(semi, ps[1]).get("stage").asString()).startsWith("SEMI");
+        // Nước đi gửi vào phòng mẹ bị từ chối.
+        mvc.perform(postJson("/api/v1/matches/" + parent + "/caro/move", ps[0], Map.of("cell", 0, "index", 0)))
+                .andExpect(status().is4xxClientError());
+
+        clock.advance(Duration.ofSeconds(4));
+        matches.tick();
+        // Không ai đi trong bán kết → X hết giờ, O đi tiếp.
+        clock.advance(Duration.ofSeconds(31));
+        matches.tick();
+        matches.tick();
+        p = match(parent, ps[0]);
+        assertThat(p.get("bracket").size()).isEqualTo(3);
+        clock.advance(Duration.ofSeconds(6));
+        matches.tick();
+        clock.advance(Duration.ofSeconds(31));
+        matches.tick();
+        matches.tick();
+        p = match(parent, ps[0]);
+        assertThat(p.get("status").asString()).isEqualTo("FINISHED");
+        List<Integer> ranks = new ArrayList<>();
+        p.get("players").forEach(x -> ranks.add(x.get("rank").asInt()));
+        assertThat(ranks).containsExactlyInAnyOrder(1, 2, 3, 3);
+        assertThat(p.get("winnerId").asString()).isNotBlank();
+        for (Account a : ps) {
+            mvc.perform(as(get("/api/v1/matches/active"), a)).andExpect(status().isNoContent());
+        }
+    }
+
+    // ------------------------------------------------------------------ sảnh thách đấu + chống spam
+
+    @Test
+    void lobbyOptInAllowsStrangerInvitesWithoutLocation() throws Exception {
+        Account a = register("lba");
+        Account b = register("lbb");
+        Account blocked = register("lbx");
+        String lobby = "/api/v1/lobby";
+        mvc.perform(as(get(lobby + "/me"), b)).andExpect(status().isNoContent());
+        mvc.perform(as(put(lobby), b).contentType(MediaType.APPLICATION_JSON).content(json(Map.of(
+                "games", List.of("sudoku"), "capacities", List.of(2, 4), "region", "21.0,105.8", "showStats", true))))
+                .andExpect(status().isBadRequest()).andExpect(jsonPath("$.code").value("INVALID_REGION"));
+        mvc.perform(as(put(lobby), b).contentType(MediaType.APPLICATION_JSON).content(json(Map.of(
+                "games", List.of("sudoku"), "capacities", List.of(2, 4), "region", "VN-HCM", "showStats", false))))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.region.code").value("VN-HCM"));
+        mvc.perform(as(put(lobby), blocked).contentType(MediaType.APPLICATION_JSON).content(json(Map.of(
+                "games", List.of("sudoku"), "region", "VN-HN", "showStats", true)))).andExpect(status().isOk());
+        mvc.perform(as(post("/api/v1/users/" + blocked.id() + "/block"), a)).andExpect(status().isNoContent());
+
+        JsonNode list = body(mvc.perform(as(get(lobby).param("game", "sudoku"), a)).andExpect(status().isOk()).andReturn());
+        List<String> ids = new ArrayList<>();
+        list.forEach(x -> ids.add(x.get("user").get("id").asString()));
+        assertThat(ids).contains(b.id().toString()).doesNotContain(blocked.id().toString(), a.id().toString());
+        assertThat(list.toString()).doesNotContain("lat").doesNotContain("distance").doesNotContain("address");
+        mvc.perform(as(get(lobby).param("game", "sudoku").param("region", "VN-HN"), a))
+                .andExpect(jsonPath("$[?(@.user.id == '" + b.id() + "')]", hasSize(0)));
+        mvc.perform(as(get(lobby).param("game", "caro"), a))
+                .andExpect(jsonPath("$[?(@.user.id == '" + b.id() + "')]", hasSize(0)));
+
+        // Không phải bạn bè nhưng B đã cho phép mời đấu sudoku → mời được; game khác thì không.
+        mvc.perform(postJson("/api/v1/challenges/invites", a, Map.of("userId", b.id(), "game", "caro", "mode", "15x15")))
+                .andExpect(status().isForbidden()).andExpect(jsonPath("$.code").value("FRIENDS_ONLY"));
+        JsonNode inv = body(mvc.perform(postJson("/api/v1/challenges/invites", a,
+                Map.of("userId", b.id(), "game", "sudoku", "mode", "easy"))).andExpect(status().isCreated()).andReturn());
+        // B mời ngược lại cùng lúc → được nhắc nhận lời mời có sẵn, không tạo hai phòng.
+        mvc.perform(postJson("/api/v1/challenges/invites", b, Map.of("userId", a.id(), "game", "sudoku", "mode", "easy")))
+                .andExpect(status().isConflict()).andExpect(jsonPath("$.code").value("INCOMING_INVITE_EXISTS"));
+        // B từ chối → A không mời lại ngay được.
+        mvc.perform(as(post("/api/v1/challenges/invites/" + inv.get("id").asString() + "/decline"), b))
+                .andExpect(jsonPath("$.status").value("DECLINED"));
+        mvc.perform(as(get("/api/v1/matches/active"), a)).andExpect(status().isNoContent());
+        mvc.perform(postJson("/api/v1/challenges/invites", a, Map.of("userId", b.id(), "game", "sudoku", "mode", "easy")))
+                .andExpect(status().isConflict()).andExpect(jsonPath("$.code").value("INVITE_COOLDOWN"));
+        clock.advance(Duration.ofMinutes(3));
+        mvc.perform(as(put(lobby), b).contentType(MediaType.APPLICATION_JSON).content(json(Map.of(
+                "games", List.of("sudoku"), "region", "VN-HCM", "showStats", false)))).andExpect(status().isOk());
+        JsonNode inv2 = body(mvc.perform(postJson("/api/v1/challenges/invites", a,
+                Map.of("userId", b.id(), "game", "sudoku", "mode", "easy"))).andExpect(status().isCreated()).andReturn());
+        // Hết hạn lời mời → không nhận được nữa, không có phòng.
+        clock.advance(Duration.ofSeconds(61));
+        mvc.perform(as(post("/api/v1/challenges/invites/" + inv2.get("id").asString() + "/accept"), b))
+                .andExpect(status().is4xxClientError());
+        mvc.perform(as(get("/api/v1/matches/active"), b)).andExpect(status().isNoContent());
+
+        // Tắt "Cho phép mời đấu" → biến khỏi danh sách.
+        mvc.perform(as(delete(lobby), b)).andExpect(status().isNoContent());
+        mvc.perform(as(get(lobby).param("game", "sudoku"), a))
+                .andExpect(jsonPath("$[?(@.user.id == '" + b.id() + "')]", hasSize(0)));
+
+        // Báo cáo người chơi.
+        mvc.perform(postJson("/api/v1/users/" + b.id() + "/report", a, Map.of("reason", "Spam lời mời")))
+                .andExpect(status().isCreated());
+        mvc.perform(postJson("/api/v1/users/" + a.id() + "/report", a, Map.of("reason", "x")))
+                .andExpect(status().isBadRequest());
     }
 }
