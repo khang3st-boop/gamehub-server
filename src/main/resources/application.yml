@@ -1,0 +1,71 @@
+# Cấu hình mặc định: PostgreSQL (môi trường online thật).
+# Chạy thử nhanh không cần PostgreSQL: dùng profile "dev" (H2 lưu file) — xem README.
+spring:
+  application:
+    name: gamehub-server
+  datasource:
+    url: ${DB_URL:jdbc:postgresql://localhost:5432/gamehub}
+    username: ${DB_USER:gamehub}
+    password: ${DB_PASSWORD:}
+  jpa:
+    open-in-view: false
+    hibernate:
+      ddl-auto: validate
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+  web:
+    resources:
+      # Flutter Web (build/web) do chính server phục vụ → web, API, WebSocket cùng một tên miền
+      # (không cần CORS, chỉ một chứng chỉ HTTPS). Thư mục không tồn tại thì chỉ chạy API.
+      static-locations: classpath:/static/,file:${GAMEHUB_WEB_DIR:./web}/
+      cache:
+        cachecontrol:
+          no-cache: true   # trình duyệt vẫn lưu nhưng hỏi lại (ETag/Last-Modified) → bản mới có hiệu lực ngay
+
+server:
+  port: ${PORT:8080}
+  error:
+    include-message: never
+    include-stacktrace: never
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health
+  endpoint:
+    health:
+      show-details: never
+
+springdoc:
+  api-docs:
+    path: /v3/api-docs
+  swagger-ui:
+    path: /swagger-ui.html
+    operations-sorter: method
+
+gamehub:
+  jwt:
+    # BẮT BUỘC đặt biến môi trường GAMEHUB_JWT_SECRET (≥ 32 byte) khi chạy profile prod.
+    secret: ${GAMEHUB_JWT_SECRET:}
+    issuer: gamehub
+    access-ttl: 15m
+    refresh-ttl: 30d
+  challenge:
+    ttl: 72h
+  nearby:
+    presence-ttl: 30m
+    max-radius-km: 50
+  online:
+    ready-timeout: 60s      # hạn bấm Sẵn sàng sau khi tạo phòng
+    countdown: 3s           # đếm ngược trước khi bắt đầu tính giờ
+    caro-turn: 30s          # thời gian mỗi lượt Caro
+    max-race: 30m           # trận đua giải quá thời gian này → hoà (TIMEOUT)
+    disconnect-grace: 45s   # mất kết nối quá thời gian này → xử thua / huỷ phòng
+    invite-ttl: 60s
+    queue-ttl: 3m
+    ready-status-ttl: 10m
+  cors:
+    # Danh sách origin phân tách bằng dấu phẩy. Production: https://game.ten-mien-cua-ban.vn
+    allowed-origins: ${GAMEHUB_CORS_ORIGINS:http://localhost:*,http://127.0.0.1:*}

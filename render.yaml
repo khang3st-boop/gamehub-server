@@ -1,0 +1,26 @@
+# Render Blueprint — server Game Hub chạy 24/7 trên Cloud (không cần mở máy tính cá nhân).
+# Repo GitHub có gốc là thư mục game_hub/backend. Render đọc file này khi tạo "New → Blueprint".
+# CSDL: PostgreSQL miễn phí trên Neon (không hết hạn), dán chuỗi kết nối vào DATABASE_URL lúc tạo Blueprint.
+# Hướng dẫn đầy đủ + giới hạn gói miễn phí: docs/HUONG_DAN_CLOUD.md
+services:
+  - type: web
+    name: gamehub-server
+    runtime: docker
+    plan: free              # đổi thành starter (trả phí) để server không ngủ — chỉ khi chủ dự án đồng ý
+    region: singapore       # gần Việt Nam nhất; nên tạo Neon cùng vùng (AWS ap-southeast-1)
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    healthCheckPath: /actuator/health
+    # Chỉ tự triển khai khi GitHub Actions (./gradlew test) đã PASS cho commit mới trên nhánh chính.
+    autoDeployTrigger: checksPass
+    envVars:
+      - key: GAMEHUB_JWT_SECRET
+        generateValue: true     # Render tự sinh khoá ngẫu nhiên, không nằm trong Git
+      - key: DATABASE_URL
+        sync: false             # nhập tay trên Render (postgresql://...neon.tech/...?sslmode=require)
+      - key: GAMEHUB_SWAGGER
+        value: "true"           # /swagger-ui/index.html — đặt "false" khi không cần nữa
+      - key: DB_POOL_SIZE
+        value: "5"              # Neon free giới hạn số kết nối; 5 là đủ cho đồ án
+      - key: TOMCAT_MAX_THREADS
+        value: "50"             # tiết kiệm RAM trên gói 512 MB

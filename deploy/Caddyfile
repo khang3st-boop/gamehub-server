@@ -1,0 +1,23 @@
+# Caddy tự xin chứng chỉ Let's Encrypt cho {$GAMEHUB_DOMAIN} (cần DNS trỏ về VPS, mở cổng 80/443).
+{$GAMEHUB_DOMAIN} {
+	encode zstd gzip
+
+	# API REST, WebSocket (wss://domain/ws), health, Swagger (chỉ khi GAMEHUB_SWAGGER=true)
+	@backend path /api/* /ws /ws/* /actuator/health /swagger-ui* /v3/api-docs*
+	reverse_proxy @backend server:8080
+
+	# Flutter Web (build/web). index.html và service worker không cache để bản mới có hiệu lực ngay.
+	root * /srv/web
+	@nocache path / /index.html /flutter_service_worker.js /version.json /flutter_bootstrap.js
+	header @nocache Cache-Control "no-cache"
+	try_files {path} /index.html
+	file_server
+
+	header {
+		Strict-Transport-Security "max-age=31536000"
+		X-Content-Type-Options "nosniff"
+		Referrer-Policy "no-referrer"
+		Permissions-Policy "geolocation=(self), camera=(), microphone=()"
+		-Server
+	}
+}

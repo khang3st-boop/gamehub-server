@@ -1,0 +1,13 @@
+# Không đưa bí mật, CSDL cục bộ hay file build vào Git.
+.gradle/
+build/
+data/
+*.zip
+.env
+.env.*
+!.env.example
+deploy/backups/
+*.log
+.idea/
+*.iml
+# web/ (Flutter Web đã build) ĐƯỢC commit: Docker image trên Cloud cần nó.

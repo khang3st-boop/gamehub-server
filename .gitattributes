@@ -1,0 +1,6 @@
+# Script chạy trên Linux (Docker build trên Render, GitHub Actions) phải giữ xuống dòng LF.
+gradlew text eol=lf
+*.sh text eol=lf
+Dockerfile text eol=lf
+*.bat text eol=crlf
+*.jar binary

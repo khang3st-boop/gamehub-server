@@ -1,0 +1,7 @@
+# Profile phát triển: H2 lưu file ./data (chế độ tương thích PostgreSQL), không cần cài CSDL.
+# Khoá JWT để trống → sinh ngẫu nhiên mỗi lần khởi động (token cũ hết hiệu lực khi restart).
+spring:
+  datasource:
+    url: jdbc:h2:file:./data/gamehub;MODE=PostgreSQL;DATABASE_TO_LOWER=TRUE;DEFAULT_NULL_ORDERING=HIGH
+    username: sa
+    password: ""

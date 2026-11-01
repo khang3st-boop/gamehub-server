@@ -1,0 +1,58 @@
+# Game Hub online: PostgreSQL + gamehub-server + Caddy (HTTPS tự động, phục vụ Flutter Web, proxy /api và /ws).
+# Chạy:  cd game_hub/backend/deploy && cp .env.example .env  (sửa .env)  &&  docker compose up -d --build
+# Chỉ Caddy mở cổng ra ngoài (80/443). PostgreSQL và server chỉ nằm trong mạng nội bộ của compose.
+services:
+  db:
+    image: postgres:17
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: gamehub
+      POSTGRES_USER: ${DB_USER:?Đặt DB_USER trong .env}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?Đặt DB_PASSWORD trong .env}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./backups:/backups
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d gamehub"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  server:
+    build: ..
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      SPRING_PROFILES_ACTIVE: prod
+      DB_URL: jdbc:postgresql://db:5432/gamehub
+      DB_USER: ${DB_USER}
+      DB_PASSWORD: ${DB_PASSWORD}
+      GAMEHUB_JWT_SECRET: ${GAMEHUB_JWT_SECRET:?Đặt GAMEHUB_JWT_SECRET (>= 32 ký tự) trong .env}
+      GAMEHUB_CORS_ORIGINS: https://${GAMEHUB_DOMAIN:?Đặt GAMEHUB_DOMAIN trong .env}
+      GAMEHUB_SWAGGER: ${GAMEHUB_SWAGGER:-false}
+      JAVA_OPTS: ${JAVA_OPTS:--XX:MaxRAMPercentage=40 -XX:+UseSerialGC -Xss512k -XX:ReservedCodeCacheSize=48m -XX:TieredStopAtLevel=1 -XX:+ExitOnOutOfMemoryError}
+    expose:
+      - "8080"
+
+  caddy:
+    image: caddy:2
+    restart: unless-stopped
+    depends_on:
+      - server
+    environment:
+      GAMEHUB_DOMAIN: ${GAMEHUB_DOMAIN}
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - ${WEB_ROOT:-../web}:/srv/web:ro
+      - caddy_data:/data
+      - caddy_config:/config
+
+volumes:
+  pgdata:
+  caddy_data:
+  caddy_config:

@@ -1,0 +1,2 @@
+org.springframework.boot.EnvironmentPostProcessor=\
+com.gamehub.server.config.DatabaseUrlEnvironmentPostProcessor
