@@ -1,10 +1,12 @@
 {
-  "release": "rubik-scanner-20261102",
-  "builtAtUtc": "2026-11-02T06:05:48.8772963Z",
+  "release": "rubik-camera-web-lighting-v2-20261102",
+  "builtAtUtc": "2026-11-02T06:59:49Z",
   "features": [
     "Rubik real-world scanner",
+    "Web camera registered (camera_web) with picker fallback",
+    "Rubik 3D lighting and shadow V2",
     "multiplayer UI"
   ],
-  "mainDartJsSha256": "68205fc81ec990955fc7298fbf9e5c43760155e6a19bc8e549c3a986a069cbe8",
+  "mainDartJsSha256": "2060cf77dfc24b0fc1a4d25088ec984bc5a99534801d975cb0424777c1547c23",
   "scannerWorkerSha256": "73a6fe22a6da0e541c42c7d86e9dbef66776e68d71e6f83fbf40473362d1741b"
 }
