@@ -1,12 +1,14 @@
 {
-  "release": "rubik-camera-web-lighting-v2-20261102",
-  "builtAtUtc": "2026-11-02T06:59:49Z",
+  "release": "rubik-scanner-v3-sudoku-daily-fix-20261102",
+  "builtAtUtc": "2026-11-02T12:45:12Z",
   "features": [
-    "Rubik real-world scanner",
+    "Rubik smart camera scanner V3 (auto detect)",
     "Web camera registered (camera_web) with picker fallback",
     "Rubik 3D lighting and shadow V2",
-    "multiplayer UI"
+    "multiplayer UI",
+    "Sudoku Daily validation and safe restore"
   ],
-  "mainDartJsSha256": "2060cf77dfc24b0fc1a4d25088ec984bc5a99534801d975cb0424777c1547c23",
-  "scannerWorkerSha256": "73a6fe22a6da0e541c42c7d86e9dbef66776e68d71e6f83fbf40473362d1741b"
+  "mainDartJsSha256": "4cb0a9d538ea54a8a4af4d4ebd3f2cc84cca6c9cd66a4b85d7e419c948a8fa1f",
+  "scannerWorkerSha256": "90ac32d3ac2ffaf09994367ebc85f42e894dd864886e4d0cbc14c1d5a642012e",
+  "computeWorkerSha256": "ff1c7fdca8418ffc0c6bc40aa9ac73e3ad089438cd518c4e8ab44af1a38166ef"
 }
