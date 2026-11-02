@@ -8,7 +8,8 @@ BACKEND_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$APP_DIR"
 # Bản JS (không WASM) để tương thích Safari; không tải CanvasKit từ CDN (chạy được khi CDN bị chặn).
 # Không truyền GAMEHUB_API_URL: bản web gọi API cùng origin với trang.
-flutter build web --release --no-web-resources-cdn
+# Build both existing compute and Rubik image-processing workers before bundling.
+bash tool/build_web.sh
 rm -rf "$BACKEND_DIR/web"
 mkdir -p "$BACKEND_DIR/web"
 cp -R build/web/. "$BACKEND_DIR/web/"
