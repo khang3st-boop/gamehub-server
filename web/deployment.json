@@ -1,8 +1,10 @@
 {
-  "release": "gamehub-web-20261102-1416",
-  "builtAtUtc": "2026-11-02T14:16:14Z",
-  "sourceCommit": "d377d28+worktree",
-  "mainDartJsSha256": "f0eee1b2dbc326eb47273277a1744ea94abcd3ad267264b2d1443b654b1a92ed",
-  "scannerWorkerSha256": "90ac32d3ac2ffaf09994367ebc85f42e894dd864886e4d0cbc14c1d5a642012e",
-  "computeWorkerSha256": "ff1c7fdca8418ffc0c6bc40aa9ac73e3ad089438cd518c4e8ab44af1a38166ef"
+  "release": "rubik-scanner-20261102",
+  "builtAtUtc": "2026-11-02T06:05:48.8772963Z",
+  "features": [
+    "Rubik real-world scanner",
+    "multiplayer UI"
+  ],
+  "mainDartJsSha256": "68205fc81ec990955fc7298fbf9e5c43760155e6a19bc8e549c3a986a069cbe8",
+  "scannerWorkerSha256": "73a6fe22a6da0e541c42c7d86e9dbef66776e68d71e6f83fbf40473362d1741b"
 }
